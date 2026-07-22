@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VBB — Voucher (Issuer)</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#4d8fd4">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="../shared/vendor/face-api.min.js"></script>
+<script src="../shared/vouchtoon.js?v=2"></script>
+<script src="../shared/vbb-crypto.js?v=2"></script>
+<style>
+  :root {
+    --bg: #0b0d11; --surface: #13151c; --border: #222530;
+    --accent: #4d8fd4; --text: #c8cdd8; --muted: #4a5060;
+    --ok: #4a9060; --err: #a84040;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; padding: 24px 18px 48px; min-height: 100vh; max-width: 720px; margin: 0 auto; }
+  .logo { font-size: 1.2rem; font-weight: 700; letter-spacing: .04em; color: var(--accent); }
+  .logo span { color: var(--muted); font-weight: 400; font-size: 0.75rem; margin-left: 10px; letter-spacing: .08em; text-transform: uppercase; }
+  .sub { font-size: 0.75rem; color: var(--muted); margin: 4px 0 22px; }
+  section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 12px; }
+  label { display: block; font-size: 0.8rem; margin: 10px 0 4px; }
+  input[type=date], input[type=file] { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; width: 100%; }
+  button { background: var(--accent); color: #06090f; border: none; border-radius: 6px; padding: 9px 16px; font-weight: 600; cursor: pointer; margin: 6px 6px 0 0; font-size: 0.85rem; }
+  button:disabled { background: var(--muted); cursor: not-allowed; }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .status { font-size: 0.8rem; padding: 9px 12px; border-radius: 6px; border: 1px solid var(--border); border-left: 3px solid var(--muted); margin-top: 10px; }
+  .status.ok  { border-left-color: var(--ok);  color: #6ab880; }
+  .status.err { border-left-color: var(--err); color: #c07070; }
+  .mono { font-family: monospace; font-size: 0.72rem; word-break: break-all; color: var(--muted); background: var(--bg); border-radius: 6px; padding: 8px; margin-top: 8px; max-height: 120px; overflow: auto; }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  canvas { max-width: 220px; border-radius: 6px; background: #0a0a0e; }
+  .drop { border: 2px dashed var(--border); border-radius: 10px; padding: 22px; text-align: center; cursor: pointer; }
+  .drop:hover { border-color: var(--accent); }
+  .note { font-size: 0.7rem; color: var(--muted); margin-top: 8px; }
+  .toon-ctl { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 14px; }
+  .toon-ctl label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); display: block; margin: 0 0 3px; }
+  .toon-ctl select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px; font-size: 0.75rem; }
+</style>
+</head>
+<body>
+
+<div class="logo">VBB <span>Voucher — Issuer</span></div>
+<div class="sub">Pass-1 reference build · Groth16 / circom / snarkjs · EdDSA-BabyJubJub · Poseidon</div>
+
+<section id="secKey">
+  <h2>1. Issuer keypair</h2>
+  <div class="row">
+    <button id="btnGenKey">Generate new keypair</button>
+    <button id="btnExportKey" class="secondary" disabled>Export keypair (keep private)</button>
+    <label style="flex:1 1 200px;">Import existing keypair
+      <input type="file" id="fileImportKey" accept=".json">
+    </label>
+  </div>
+  <div id="keyStatus" class="status">No keypair loaded.</div>
+  <div id="keyDump" class="mono" style="display:none"></div>
+</section>
+
+<section id="secCapture">
+  <h2>2. Likeness capture (VouchToon)</h2>
+  <div class="drop" id="drop">Tap or drag a photo here — nothing leaves the browser</div>
+  <input type="file" id="fileIn" accept="image/*" style="display:none">
+  <div class="row" style="margin-top:12px;">
+    <canvas id="cLand"></canvas>
+    <canvas id="cCart"></canvas>
+  </div>
+  <div id="toonControls" class="toon-ctl" style="display:none;">
+    <div><label>Hair</label><select id="optHair"></select></div>
+    <div><label>Fringe</label><select id="optFringe"></select></div>
+    <div><label>Hair shade</label><select id="optShade"></select></div>
+    <div><label>Beard</label><select id="optBeard"></select></div>
+    <div><label>Eyes</label><select id="optIris"></select></div>
+    <div><label>Glasses</label><select id="optGlasses"></select></div>
+  </div>
+  <div id="captureStatus" class="status">No photo captured yet.</div>
+  <div class="note">Auto-detect seeds these; correct any that are wrong before issuing. Beard colour follows hair. These become part of the signed likeness (the gatekeeper sees them).</div>
+</section>
+
+<section id="secIssue">
+  <h2>3. Attribute + issuance</h2>
+  <label for="dob">Date of birth</label>
+  <input type="date" id="dob">
+  <div class="row" style="margin-top:12px;">
+    <button id="btnIssue" disabled>Issue credential</button>
+    <button id="btnDownload" class="secondary" disabled>Download credential.json</button>
+  </div>
+  <div id="issueStatus" class="status">Waiting on keypair, photo, and date of birth.</div>
+  <div id="credDump" class="mono" style="display:none"></div>
+</section>
+
+<div class="note">
+  Credential JSON shape: <code>{ vbb:1, issuer_pub, attrs:{dob_days, likeness_commitment}, likeness_data, sig }</code>.
+  This is a pass-1 placeholder format — the container question (SPEC-VBB.md §11, Q1) is still open;
+  a later pass may swap this bespoke shape for a signature over an mDoc/W3C-VC-issued attribute set.
+</div>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const st = (el, msg, cls='') => { el.textContent = msg; el.className = 'status' + (cls?' '+cls:''); };
+
+let vbb = null;
+let keypair = null; // { privRaw: Uint8Array, pubX, pubY }
+let likeness = null; // VouchToon capture output (mutated by the operator controls)
+let baseHairRgb = null; // sampled hair rgb, kept so the shade nudge is non-destructive
+let cW = 0, cH = 0;     // preview canvas dimensions, for re-render on control change
+
+(async () => {
+  vbb = await VbbCrypto.createVbbCrypto();
+})();
+
+// ---- Keypair ---------------------------------------------------------------
+$('btnGenKey').addEventListener('click', () => {
+  const seed = new Uint8Array(32);
+  crypto.getRandomValues(seed);
+  keypair = vbb.genKeypair(seed);
+  st($('keyStatus'), '✓ Keypair generated', 'ok');
+  $('keyDump').style.display = 'block';
+  $('keyDump').textContent = `pub_x: ${keypair.pubX}\npub_y: ${keypair.pubY}`;
+  $('btnExportKey').disabled = false;
+  updateIssueReady();
+});
+
+$('btnExportKey').addEventListener('click', () => {
+  const seedHex = Array.from(keypair.privRaw).map(b => b.toString(16).padStart(2,'0')).join('');
+  const blob = new Blob([JSON.stringify({ vbb_keypair: 1, seed_hex: seedHex, pub_x: keypair.pubX, pub_y: keypair.pubY }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'voucher-keypair.json';
+  a.click();
+});
+
+$('fileImportKey').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const data = JSON.parse(await file.text());
+  const seed = new Uint8Array(data.seed_hex.match(/.{2}/g).map(b => parseInt(b, 16)));
+  keypair = vbb.genKeypair(seed);
+  st($('keyStatus'), '✓ Keypair imported', 'ok');
+  $('keyDump').style.display = 'block';
+  $('keyDump').textContent = `pub_x: ${keypair.pubX}\npub_y: ${keypair.pubY}`;
+  $('btnExportKey').disabled = false;
+  updateIssueReady();
+});
+
+// ---- Likeness capture -------------------------------------------------------
+$('drop').addEventListener('click', () => $('fileIn').click());
+$('fileIn').addEventListener('change', (e) => e.target.files[0] && capture(e.target.files[0]));
+$('drop').addEventListener('dragover', (e) => e.preventDefault());
+$('drop').addEventListener('drop', (e) => { e.preventDefault(); e.dataTransfer.files[0] && capture(e.dataTransfer.files[0]); });
+
+async function capture(file) {
+  st($('captureStatus'), '⏳ Loading face-detection models…');
+  try {
+    await VouchToon.loadModels();
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    await img.decode();
+    const MAX = 400;
+    const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+    const W = Math.round(img.width * scale), H = Math.round(img.height * scale);
+    const work = document.createElement('canvas');
+    work.width = W; work.height = H;
+    work.getContext('2d').drawImage(img, 0, 0, W, H);
+
+    st($('captureStatus'), '⏳ Detecting face…');
+    const cap = await VouchToon.captureFace(work);
+    if (!cap) { st($('captureStatus'), '✗ No face detected — try a clearer, frontal photo', 'err'); return; }
+    likeness = cap;
+
+    const cLand = $('cLand'); cLand.width = W; cLand.height = H;
+    const lCtx = cLand.getContext('2d');
+    lCtx.drawImage(work, 0, 0);
+    VouchToon.overlayLandmarks(lCtx, cap.positions, W);
+
+    cW = W; cH = H;
+    baseHairRgb = cap.hair.rgb.slice();
+    buildControls(cap); // seeds the selects, applies them to `likeness`, renders
+
+    st($('captureStatus'), `✓ Captured · conf ${cap.score.toFixed(2)} — adjust the likeness below if needed`, 'ok');
+    updateIssueReady();
+  } catch (e) {
+    st($('captureStatus'), '✗ ' + e.message, 'err');
+  }
+}
+
+// ---- Operator likeness controls --------------------------------------------
+// The selects seed from auto-detect, then edit `likeness` in place. `likeness`
+// is exactly what gets committed at issuance, so every correction here lands in
+// the signed L (and travels to the bouncer).
+function buildControls(cap) {
+  if (!VouchToon.HAIR_STYLES || !VouchToon.tintRgb) {
+    throw new Error('stale vouchtoon.js loaded — hard-refresh the page (Ctrl+Shift+R) to load the likeness controls');
+  }
+  const fill = (id, values, current) => {
+    const sel = $(id); sel.innerHTML = '';
+    values.forEach((v) => {
+      const o = document.createElement('option');
+      o.value = String(v); o.textContent = String(v);
+      if (String(v) === String(current)) o.selected = true;
+      sel.appendChild(o);
+    });
+  };
+  fill('optHair',    VouchToon.HAIR_STYLES,   cap.hairStyle);
+  fill('optFringe',  VouchToon.FRINGE_STYLES, cap.fringeStyle);
+  fill('optShade',   [-3, -2, -1, 0, 1, 2, 3], 0);
+  fill('optBeard',   VouchToon.BEARD_STYLES,  cap.beardStyle);
+  fill('optIris',    VouchToon.IRIS_KEYS,     cap.iris);
+  fill('optGlasses', [false, true],           cap.glasses);
+  $('toonControls').style.display = '';
+  applyOpts();
+}
+
+function applyOpts() {
+  if (!likeness) return;
+  likeness.hairStyle   = $('optHair').value;
+  likeness.fringeStyle = $('optFringe').value;
+  likeness.iris        = $('optIris').value;
+  likeness.beardStyle  = $('optBeard').value;
+  likeness.glasses     = $('optGlasses').value === 'true';
+  // Hair shade bakes into the stored hair colour; beard follows hair.
+  const shaded = VouchToon.tintRgb(baseHairRgb, Number($('optShade').value));
+  likeness.hair.rgb = shaded;
+  likeness.hair.css = `rgb(${shaded[0]},${shaded[1]},${shaded[2]})`;
+  likeness.beard.rgb = shaded.slice();
+  likeness.beard.color = likeness.hair.css;
+  likeness.beard.detected = likeness.beardStyle !== 'none';
+  renderPreview();
+}
+
+function renderPreview() {
+  const c = $('cCart'); c.width = cW; c.height = cH;
+  VouchToon.renderCartoon(c.getContext('2d'), likeness.positions, cW, cH, likeness);
+}
+
+$('toonControls').addEventListener('change', applyOpts);
+
+// ---- Issuance ---------------------------------------------------------------
+function updateIssueReady() {
+  $('btnIssue').disabled = !(keypair && likeness && $('dob').value);
+}
+$('dob').addEventListener('change', updateIssueReady);
+
+let credential = null;
+$('btnIssue').addEventListener('click', () => {
+  try {
+    const dobDays = vbb.dobDaysFromDate($('dob').value);
+    const LC = vbb.computeLikenessCommitment(likeness);
+    const sig = vbb.signCredential(keypair.privRaw, dobDays, LC);
+    credential = {
+      vbb: 1,
+      issuer_pub: { x: keypair.pubX, y: keypair.pubY },
+      attrs: { dob_days: dobDays, likeness_commitment: LC.toString() },
+      likeness_data: likeness,
+      sig,
+    };
+    st($('issueStatus'), '✓ Credential issued', 'ok');
+    $('credDump').style.display = 'block';
+    $('credDump').textContent = JSON.stringify(credential, null, 2).slice(0, 2000);
+    $('btnDownload').disabled = false;
+  } catch (e) {
+    st($('issueStatus'), '✗ ' + e.message, 'err');
+  }
+});
+
+$('btnDownload').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(credential, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'vbb-credential.json';
+  a.click();
+});
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
+</script>
+</body>
+</html>

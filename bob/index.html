@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VBB — Bob (Prover)</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#4a9060">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="../shared/vendor/snarkjs.min.js"></script>
+<script src="../shared/vendor/qrcode.min.js"></script>
+<script src="../shared/vendor/jsQR.js"></script>
+<script src="../shared/vbb-crypto.js?v=2"></script>
+<script src="../shared/vbb-codec.js?v=2"></script>
+<script src="../shared/vbb-qr.js"></script>
+<style>
+  :root {
+    --bg: #0b0d11; --surface: #13151c; --border: #222530;
+    --accent: #4d8fd4; --text: #c8cdd8; --muted: #4a5060;
+    --ok: #4a9060; --err: #a84040;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; padding: 24px 18px 48px; min-height: 100vh; max-width: 720px; margin: 0 auto; }
+  .logo { font-size: 1.2rem; font-weight: 700; letter-spacing: .04em; color: var(--accent); }
+  .logo span { color: var(--muted); font-weight: 400; font-size: 0.75rem; margin-left: 10px; letter-spacing: .08em; text-transform: uppercase; }
+  .sub { font-size: 0.75rem; color: var(--muted); margin: 4px 0 22px; }
+  section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 12px; }
+  button { background: var(--accent); color: #06090f; border: none; border-radius: 6px; padding: 9px 16px; font-weight: 600; cursor: pointer; margin: 6px 6px 0 0; font-size: 0.85rem; }
+  button:disabled { background: var(--muted); cursor: not-allowed; }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  input[type=file], textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; width: 100%; font-family: monospace; font-size: 0.75rem; }
+  textarea { min-height: 90px; }
+  .status { font-size: 0.8rem; padding: 9px 12px; border-radius: 6px; border: 1px solid var(--border); border-left: 3px solid var(--muted); margin-top: 10px; }
+  .status.ok  { border-left-color: var(--ok);  color: #6ab880; }
+  .status.err { border-left-color: var(--err); color: #c07070; }
+  .mono { font-family: monospace; font-size: 0.72rem; word-break: break-all; color: var(--muted); background: var(--bg); border-radius: 6px; padding: 8px; margin-top: 8px; max-height: 140px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 8px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<div class="logo">VBB <span>Bob — Prover</span></div>
+<div class="sub">Pass-1 reference build · Groth16 / circom / snarkjs · EdDSA-BabyJubJub · Poseidon</div>
+
+<section>
+  <h2>1. Credentials</h2>
+  <label>Import credential file(s)
+    <input type="file" id="fileImportCred" accept=".json" multiple>
+  </label>
+  <table id="credTable"><thead><tr><th>#</th><th>issuer pub_x</th><th>dob_days</th><th>satisfies?</th></tr></thead><tbody></tbody></table>
+</section>
+
+<section>
+  <h2>2. Trust-root package (from Bouncer)</h2>
+  <label>Import trust-root package
+    <input type="file" id="fileImportTrustRoot" accept=".json">
+  </label>
+  <div id="trustRootStatus" class="status">No trust-root package loaded.</div>
+</section>
+
+<section>
+  <h2>3. Challenge (from Bouncer)</h2>
+  <div class="row">
+    <button id="btnScanChallenge">Scan challenge QR</button>
+    <button id="btnStopScan" class="secondary" style="display:none">Stop camera</button>
+    <label style="flex:1 1 200px;">…or import challenge file
+      <input type="file" id="fileImportChallenge" accept=".json">
+    </label>
+  </div>
+  <video id="scanVideo" playsinline style="display:none; width:100%; max-width:320px; border-radius:8px; margin-top:10px; background:#000"></video>
+  <div id="challengeStatus" class="status">No challenge loaded.</div>
+</section>
+
+<section>
+  <h2>4. Prove</h2>
+  <div id="selectionStatus" class="status">Waiting on credentials, trust root, and challenge.</div>
+  <div class="row">
+    <button id="btnProve" disabled>Generate proof</button>
+    <button id="btnShowProofQR" class="secondary" disabled>Show proof QR</button>
+    <button id="btnDownloadProof" class="secondary" disabled>Download proof-package.json</button>
+  </div>
+  <div id="proveStatus" class="status" style="display:none"></div>
+  <div id="qrWrap" style="display:none; margin-top:12px;">
+    <div id="qrBox" style="max-width:300px; background:#fff; padding:8px; border-radius:8px;"></div>
+    <div id="qrInfo" class="note" style="margin-top:6px"></div>
+  </div>
+  <div id="proofDump" class="mono" style="display:none"></div>
+</section>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const st = (el, msg, cls='') => { el.textContent = msg; el.className = 'status' + (cls?' '+cls:''); };
+
+let vbb = null;
+let credentials = []; // raw credential JSON objects
+let trustRoot = null; // { root, issuers: [{x,y}] }
+let challenge = null; // { N_v, root_id, today_days }
+let proofPackage = null;
+
+(async () => {
+  vbb = await VbbCrypto.createVbbCrypto();
+})();
+
+function renderCredTable() {
+  const tbody = $('credTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  credentials.forEach((c, i) => {
+    const satisfies = challenge ? satisfiesPredicate(c, challenge.today_days) : '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i}</td><td>${c.issuer_pub.x.slice(0,14)}…</td><td>${c.attrs.dob_days}</td><td>${satisfies}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function satisfiesPredicate(cred, todayDays) {
+  return (todayDays - Number(cred.attrs.dob_days)) >= vbb.THRESHOLD_DAYS;
+}
+
+$('fileImportCred').addEventListener('change', async (e) => {
+  for (const file of e.target.files) {
+    credentials.push(JSON.parse(await file.text()));
+  }
+  renderCredTable();
+  updateReady();
+  e.target.value = '';
+});
+
+$('fileImportTrustRoot').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  trustRoot = JSON.parse(await file.text());
+  st($('trustRootStatus'), `✓ loaded trust root over ${trustRoot.issuers.length} issuer(s): R = ${trustRoot.root.slice(0,24)}…`, 'ok');
+  updateReady();
+  e.target.value = '';
+});
+
+function acceptChallenge(obj, via) {
+  challenge = obj;
+  st($('challengeStatus'), `✓ loaded challenge (${via}) · today_days=${challenge.today_days} · root_id=${String(challenge.root_id).slice(0,20)}…`, 'ok');
+  renderCredTable();
+  updateReady();
+}
+
+$('fileImportChallenge').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  acceptChallenge(JSON.parse(await file.text()), 'file');
+  e.target.value = '';
+});
+
+// ---- Challenge over QR (Bouncer -> Bob) -------------------------------------
+let scanner = null;
+$('btnScanChallenge').addEventListener('click', async () => {
+  try {
+    $('scanVideo').style.display = 'block';
+    $('btnStopScan').style.display = '';
+    st($('challengeStatus'), '⏳ point the camera at the Bouncer’s challenge QR…');
+    scanner = VBBQR.Scanner($('scanVideo'), (text) => {
+      $('scanVideo').style.display = 'none';
+      $('btnStopScan').style.display = 'none';
+      try { acceptChallenge(VBBCodec.decodeChallenge(text), 'QR'); }
+      catch (err) { st($('challengeStatus'), '✗ scanned code is not a VBB challenge: ' + err.message, 'err'); }
+    });
+    await scanner.start();
+  } catch (err) {
+    $('scanVideo').style.display = 'none';
+    $('btnStopScan').style.display = 'none';
+    st($('challengeStatus'), '✗ ' + err.message, 'err');
+  }
+});
+
+$('btnStopScan').addEventListener('click', () => {
+  if (scanner) scanner.stop();
+  $('scanVideo').style.display = 'none';
+  $('btnStopScan').style.display = 'none';
+  st($('challengeStatus'), challenge ? 'Challenge already loaded.' : 'No challenge loaded.');
+});
+
+let selectedIndex = -1;
+function updateReady() {
+  if (!(credentials.length && trustRoot && challenge)) {
+    st($('selectionStatus'), 'Waiting on credentials, trust root, and challenge.');
+    $('btnProve').disabled = true;
+    return;
+  }
+  if (trustRoot.root !== String(challenge.root_id)) {
+    st($('selectionStatus'), '✗ trust-root package does not match challenge.root_id', 'err');
+    $('btnProve').disabled = true;
+    return;
+  }
+  const qualifying = credentials
+    .map((c, i) => ({ i, c }))
+    .filter(({ c }) => satisfiesPredicate(c, challenge.today_days) &&
+      trustRoot.issuers.some(iss => iss.x === c.issuer_pub.x && iss.y === c.issuer_pub.y));
+
+  if (qualifying.length === 0) {
+    st($('selectionStatus'), '✗ no imported credential satisfies the predicate under this trust root', 'err');
+    $('btnProve').disabled = true;
+    selectedIndex = -1;
+    return;
+  }
+  selectedIndex = qualifying[0].i; // auto-select if only one qualifies; first match otherwise
+  st($('selectionStatus'), `✓ credential #${selectedIndex} selected (${qualifying.length} qualifying)`, 'ok');
+  $('btnProve').disabled = false;
+}
+
+$('btnProve').addEventListener('click', async () => {
+  $('proveStatus').style.display = 'block';
+  st($('proveStatus'), '⏳ generating proof (this can take several seconds)…');
+  try {
+    const cred = credentials[selectedIndex];
+    const issuerIdx = trustRoot.issuers.findIndex(iss => iss.x === cred.issuer_pub.x && iss.y === cred.issuer_pub.y);
+    const localTree = vbb.buildTrustTree(trustRoot.issuers.map(iss => ({ pubX: iss.x, pubY: iss.y })));
+    if (localTree.root.toString() !== trustRoot.root) throw new Error('locally rebuilt root does not match trust-root package — corrupt package?');
+    const merklePath = vbb.getMerklePath(localTree, issuerIdx);
+
+    const N_v = challenge.N_v;
+    const N_p = vbb.randomFieldElement();
+    const N = vbb.combineChallenge(N_v, N_p);
+    const LC = BigInt(cred.attrs.likeness_commitment);
+
+    const input = vbb.buildCircuitInput({
+      credential: cred,
+      merklePath,
+      root: BigInt(trustRoot.root),
+      challenge: N,
+      likenessPub: LC,
+      today: challenge.today_days,
+    });
+
+    const { proof, publicSignals } = await vbb.proveGroth16(input, '../shared/vbb.wasm', '../shared/vbb_final.zkey');
+    proofPackage = { proof, publicSignals, N_p, likeness_data: cred.likeness_data };
+
+    st($('proveStatus'), '✓ proof generated', 'ok');
+    $('proofDump').style.display = 'block';
+    $('proofDump').textContent = JSON.stringify({ publicSignals, N_p }, null, 2);
+    $('btnDownloadProof').disabled = false;
+    $('btnShowProofQR').disabled = false;
+  } catch (e) {
+    st($('proveStatus'), '✗ proof generation failed: ' + e.message, 'err');
+  }
+});
+
+// ---- Proof over QR (Bob -> Bouncer) ----------------------------------------
+// Only fits because vbb-codec.js packs it: the raw JSON (~7.4 kB) exceeds any
+// single QR; packed it is ~707 B / 944 base64 chars.
+$('btnShowProofQR').addEventListener('click', () => {
+  try {
+    const b64 = VBBCodec.encodeToBase64(proofPackage);
+    const info = VBBQR.render($('qrBox'), b64);
+    $('qrWrap').style.display = 'block';
+    $('qrInfo').textContent =
+      `${info.chars} base64 chars · ${info.modules}×${info.modules} modules · EC ${info.ec} · ` +
+      `packed from ${JSON.stringify(proofPackage).length} B of JSON`;
+  } catch (e) {
+    st($('proveStatus'), '✗ QR encode failed: ' + e.message, 'err');
+  }
+});
+
+$('btnDownloadProof').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(proofPackage, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'vbb-proof-package.json';
+  a.click();
+});
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
+</script>
+</body>
+</html>

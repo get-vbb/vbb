@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VBB — Vouch-Based Bearer credentials</title>
+<link rel="icon" type="image/png" href="voucher/icon-192.png">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0d11;color:#c8cdd8;font-family:system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:28px}
+  h1{font-size:1.4rem;letter-spacing:.04em;color:#4d8fd4}
+  .sub{font-size:.8rem;color:#4a5060;margin-top:6px;text-align:center}
+  .apps{display:flex;flex-wrap:wrap;gap:16px;justify-content:center}
+  .card{display:flex;align-items:center;gap:14px;background:#13151c;border:1px solid #222530;border-radius:12px;padding:18px 22px;text-decoration:none;color:inherit;min-width:220px}
+  .card:hover{border-color:var(--a)}
+  .letter{width:52px;height:52px;border-radius:12px;background:var(--a);color:#0b0d11;font-size:1.6rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .name{font-weight:600}
+  .role{font-size:.75rem;color:#4a5060;text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
+</style>
+</head>
+<body>
+<div><h1>VBB</h1><div class="sub">Vouch-based bearer credentials · Groth16 / circom / snarkjs</div></div>
+<div class="apps">
+    <a class="card" href="voucher/" style="--a:#4d8fd4">
+      <div class="letter">V</div>
+      <div><div class="name">Voucher</div><div class="role">Issuer</div></div>
+    </a>
+    <a class="card" href="bob/" style="--a:#4a9060">
+      <div class="letter">B</div>
+      <div><div class="name">Bob</div><div class="role">Prover</div></div>
+    </a>
+    <a class="card" href="bouncer/" style="--a:#c08a3e">
+      <div class="letter">B</div>
+      <div><div class="name">Bouncer</div><div class="role">Verifier</div></div>
+    </a></div>
+<div class="sub">Each app installs as a standalone PWA and runs entirely in the browser.</div>
+</body>
+</html>

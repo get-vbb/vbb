@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VBB — Bouncer (Verifier)</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#c08a3e">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="../shared/vendor/face-api.min.js"></script>
+<script src="../shared/vendor/snarkjs.min.js"></script>
+<script src="../shared/vendor/qrcode.min.js"></script>
+<script src="../shared/vendor/jsQR.js"></script>
+<script src="../shared/vouchtoon.js?v=2"></script>
+<script src="../shared/vbb-crypto.js?v=2"></script>
+<script src="../shared/vbb-codec.js?v=2"></script>
+<script src="../shared/vbb-qr.js"></script>
+<script src="../shared/vbb-perturb.js?v=2"></script>
+<style>
+  :root {
+    --bg: #0b0d11; --surface: #13151c; --border: #222530;
+    --accent: #4d8fd4; --text: #c8cdd8; --muted: #4a5060;
+    --ok: #4a9060; --err: #a84040;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; padding: 24px 18px 48px; min-height: 100vh; max-width: 760px; margin: 0 auto; }
+  .logo { font-size: 1.2rem; font-weight: 700; letter-spacing: .04em; color: var(--accent); }
+  .logo span { color: var(--muted); font-weight: 400; font-size: 0.75rem; margin-left: 10px; letter-spacing: .08em; text-transform: uppercase; }
+  .sub { font-size: 0.75rem; color: var(--muted); margin: 4px 0 22px; }
+  section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 12px; }
+  button { background: var(--accent); color: #06090f; border: none; border-radius: 6px; padding: 9px 16px; font-weight: 600; cursor: pointer; margin: 6px 6px 0 0; font-size: 0.85rem; }
+  button:disabled { background: var(--muted); cursor: not-allowed; }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  button.danger { background: var(--err); color: #fff; }
+  input[type=file] { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+  .status { font-size: 0.8rem; padding: 9px 12px; border-radius: 6px; border: 1px solid var(--border); border-left: 3px solid var(--muted); margin-top: 10px; }
+  .status.ok  { border-left-color: var(--ok);  color: #6ab880; }
+  .status.err { border-left-color: var(--err); color: #c07070; }
+  .mono { font-family: monospace; font-size: 0.72rem; word-break: break-all; color: var(--muted); background: var(--bg); border-radius: 6px; padding: 8px; margin-top: 8px; max-height: 140px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 8px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
+  canvas { max-width: 240px; border-radius: 6px; background: #0a0a0e; }
+  .verdict { font-size: 1.4rem; font-weight: 700; padding: 14px; border-radius: 8px; text-align: center; margin-top: 12px; }
+  .verdict.pass { background: rgba(74,144,96,0.15); color: #6ab880; border: 1px solid var(--ok); }
+  .verdict.fail { background: rgba(168,64,64,0.15); color: #c07070; border: 1px solid var(--err); }
+  .note { font-size: 0.7rem; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="logo">VBB <span>Bouncer — Verifier</span></div>
+<div class="sub">Pass-1 reference build · Groth16 / circom / snarkjs · EdDSA-BabyJubJub · Poseidon</div>
+
+<section>
+  <h2>1. Trusted issuer keys</h2>
+  <div class="row">
+    <label>Import issuer public key (accepts a Voucher keypair export — only pub_x/pub_y are read)
+      <input type="file" id="fileImportIssuer" accept=".json">
+    </label>
+  </div>
+  <table id="issuerTable"><thead><tr><th>#</th><th>pub_x</th><th>pub_y</th><th></th></tr></thead><tbody></tbody></table>
+  <div id="rootStatus" class="status">No issuers loaded — trust root undefined.</div>
+</section>
+
+<section>
+  <h2>2. Trust-root distribution (pass-1 placeholder for Q3, open)</h2>
+  <div class="row">
+    <button id="btnExportTrustRoot" class="secondary" disabled>Export trust-root package for Bob</button>
+  </div>
+  <div class="note">Bob needs the full issuer-key list (not just the root value) to build a local Merkle path. Real trust-root distribution (SPEC-VBB.md §5/§13, Q3) is unbuilt; this file/copy-paste export is the pass-1 stand-in.</div>
+</section>
+
+<section>
+  <h2>3. Challenge</h2>
+  <div class="row">
+    <button id="btnNewChallenge" disabled>Generate new challenge</button>
+    <button id="btnShowChallengeQR" class="secondary" disabled>Show challenge QR</button>
+    <button id="btnExportChallenge" class="secondary" disabled>Export challenge.json</button>
+  </div>
+  <div id="chQrWrap" style="display:none; margin-top:12px;">
+    <div id="chQrBox" style="max-width:260px; background:#fff; padding:8px; border-radius:8px;"></div>
+    <div id="chQrInfo" class="note" style="margin-top:6px"></div>
+  </div>
+  <div id="challengeDump" class="mono" style="display:none"></div>
+</section>
+
+<section>
+  <h2>4. Verify Bob's proof</h2>
+  <div class="row">
+    <button id="btnScanProof">Scan proof QR</button>
+    <button id="btnStopScan" class="secondary" style="display:none">Stop camera</button>
+    <label style="flex:1 1 200px;">…or import proof package
+      <input type="file" id="fileImportProof" accept=".json">
+    </label>
+  </div>
+  <video id="scanVideo" playsinline style="display:none; width:100%; max-width:320px; border-radius:8px; margin-top:10px; background:#000"></video>
+  <div id="verifyStatus" class="status">Waiting on a proof package.</div>
+  <div id="verdict" style="display:none"></div>
+</section>
+
+<section id="secLikeness" style="display:none">
+  <h2>5. Likeness check</h2>
+  <div class="prompt" id="likenessPrompt">
+    These are cartoons of the credential holder. <strong>Could they have been made from the face in front of you?</strong>
+  </div>
+  <div class="row" id="variantRow" style="margin-top:12px;"></div>
+  <div class="note" id="variantNote"></div>
+  <div class="row" style="margin-top:10px;">
+    <button id="btnAdmit">Looks like them — admit</button>
+    <button id="btnReject" class="secondary">Doesn't look like them — reject</button>
+  </div>
+  <div id="likenessOutcome" class="status" style="display:none"></div>
+</section>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const st = (el, msg, cls='') => { el.textContent = msg; el.className = 'status' + (cls?' '+cls:''); };
+
+let vbb = null;
+let issuers = []; // [{pubX, pubY}]
+let tree = null;
+let challenge = null; // { N_v, root_id, today_days }
+
+(async () => {
+  vbb = await VbbCrypto.createVbbCrypto();
+})();
+
+function rebuildTree() {
+  if (issuers.length === 0) { tree = null; $('btnExportTrustRoot').disabled = true; $('btnNewChallenge').disabled = true; st($('rootStatus'), 'No issuers loaded — trust root undefined.'); return; }
+  tree = vbb.buildTrustTree(issuers);
+  $('btnExportTrustRoot').disabled = false;
+  $('btnNewChallenge').disabled = false;
+  st($('rootStatus'), `✓ Trust root over ${issuers.length} issuer(s): R = ${tree.root.toString().slice(0,24)}…`, 'ok');
+}
+
+function renderIssuerTable() {
+  const tbody = $('issuerTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  issuers.forEach((iss, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i}</td><td>${iss.pubX.slice(0,16)}…</td><td>${iss.pubY.slice(0,16)}…</td><td></td>`;
+    const btn = document.createElement('button');
+    btn.textContent = 'Remove'; btn.className = 'secondary';
+    btn.addEventListener('click', () => { issuers.splice(i,1); renderIssuerTable(); rebuildTree(); });
+    tr.lastChild.appendChild(btn);
+    tbody.appendChild(tr);
+  });
+}
+
+$('fileImportIssuer').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const data = JSON.parse(await file.text());
+  const pubX = data.pub_x || (data.issuer_pub && data.issuer_pub.x);
+  const pubY = data.pub_y || (data.issuer_pub && data.issuer_pub.y);
+  if (!pubX || !pubY) { st($('rootStatus'), '✗ file has no pub_x/pub_y', 'err'); return; }
+  issuers.push({ pubX, pubY });
+  renderIssuerTable();
+  rebuildTree();
+  e.target.value = '';
+});
+
+$('btnExportTrustRoot').addEventListener('click', () => {
+  const pkg = { vbb_trust_root: 1, root: tree.root.toString(), issuers: issuers.map(i => ({ x: i.pubX, y: i.pubY })) };
+  const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'vbb-trust-root.json';
+  a.click();
+});
+
+// ---- Challenge --------------------------------------------------------------
+$('btnNewChallenge').addEventListener('click', () => {
+  const N_v = vbb.randomFieldElement();
+  const today_days = vbb.todayDays();
+  // root_id: pass-1 simplification — the trust_root_id (SPEC-VBB.md §6) IS the
+  // Merkle root value itself; there is no separate versioned label (Q3 open).
+  challenge = { N_v, root_id: tree.root.toString(), today_days };
+  $('challengeDump').style.display = 'block';
+  $('challengeDump').textContent = JSON.stringify(challenge, null, 2);
+  $('btnExportChallenge').disabled = false;
+});
+
+$('btnExportChallenge').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(challenge, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'vbb-challenge.json';
+  a.click();
+});
+
+// ---- Challenge over QR (Bouncer -> Bob) ---------------------------------------
+$('btnShowChallengeQR').addEventListener('click', () => {
+  const info = VBBQR.render($('chQrBox'), VBBCodec.encodeChallenge(challenge));
+  $('chQrWrap').style.display = 'block';
+  $('chQrInfo').textContent = `${info.chars} chars · ${info.modules}×${info.modules} modules · EC ${info.ec}`;
+});
+
+// ---- Proof over QR (Bob -> Bouncer) -------------------------------------------
+let scanner = null;
+$('btnScanProof').addEventListener('click', async () => {
+  if (!challenge) { st($('verifyStatus'), '✗ generate a challenge first', 'err'); return; }
+  try {
+    $('scanVideo').style.display = 'block';
+    $('btnStopScan').style.display = '';
+    st($('verifyStatus'), '⏳ point the camera at Bob’s proof QR…');
+    scanner = VBBQR.Scanner($('scanVideo'), async (text) => {
+      $('scanVideo').style.display = 'none';
+      $('btnStopScan').style.display = 'none';
+      try { await verify(VBBCodec.decodeFromBase64(text)); }
+      catch (err) { st($('verifyStatus'), '✗ scanned code is not a VBB proof: ' + err.message, 'err'); }
+    });
+    await scanner.start();
+  } catch (err) {
+    $('scanVideo').style.display = 'none';
+    $('btnStopScan').style.display = 'none';
+    st($('verifyStatus'), '✗ ' + err.message, 'err');
+  }
+});
+
+$('btnStopScan').addEventListener('click', () => {
+  if (scanner) scanner.stop();
+  $('scanVideo').style.display = 'none';
+  $('btnStopScan').style.display = 'none';
+  st($('verifyStatus'), 'Waiting on a proof package.');
+});
+
+// ---- Verify -------------------------------------------------------------------
+$('fileImportProof').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+  if (!challenge) { st($('verifyStatus'), '✗ generate a challenge first', 'err'); return; }
+  try { await verify(JSON.parse(await file.text())); }
+  catch (err) { st($('verifyStatus'), '✗ ' + err.message, 'err'); }
+});
+
+async function verify(pkg) {
+  try {
+    const { proof, publicSignals, N_p, likeness_data } = pkg;
+
+    st($('verifyStatus'), '⏳ recomputing N, LC and checking consistency…');
+    const recomputedN = vbb.combineChallenge(challenge.N_v, N_p);
+    const recomputedLC = vbb.computeLikenessCommitment(likeness_data);
+
+    // Public signal order matches circuits/vbb.circom's
+    // `component main {public [root, challenge, likeness_pub, today]}`.
+    const [pubRoot, pubChallenge, pubLikeness, pubToday] = publicSignals;
+
+    const checks = {
+      root: pubRoot === challenge.root_id,
+      challenge: pubChallenge === recomputedN.toString(),
+      likeness: pubLikeness === recomputedLC.toString(),
+      today: pubToday === challenge.today_days.toString(),
+    };
+    const consistencyOk = Object.values(checks).every(Boolean);
+
+    let snarkOk = false;
+    if (consistencyOk) {
+      st($('verifyStatus'), '⏳ verifying Groth16 proof…');
+      const vkeyResp = await fetch('../shared/verification_key.json');
+      const vkey = await vkeyResp.json();
+      snarkOk = await vbb.verifyGroth16(vkey, publicSignals, proof);
+    }
+
+    const pass = consistencyOk && snarkOk;
+    $('verdict').style.display = 'block';
+    $('verdict').className = 'verdict ' + (pass ? 'pass' : 'fail');
+    $('verdict').textContent = pass ? 'PASS' : 'FAIL';
+    st($('verifyStatus'), pass
+      ? '✓ proof verified — compare the rendered likeness to the person in front of you'
+      : `✗ rejected — ${!consistencyOk ? 'consistency check failed: ' + JSON.stringify(checks) : 'snarkjs verification failed'}`,
+      pass ? 'ok' : 'err');
+
+    if (pass && likeness_data && likeness_data.positions) {
+      showVariants(likeness_data, recomputedN.toString());
+    } else {
+      $('secLikeness').style.display = 'none';
+    }
+  } catch (err) {
+    st($('verifyStatus'), '✗ ' + err.message, 'err');
+  }
+}
+
+// ---- Likeness check: k renderings of the SAME holder --------------------------
+// Seeded from the COMBINED nonce N = f(N_v, N_p), never N_v alone: a
+// verifier-chosen seed could be replayed to recover a stable rendering across
+// visits — exactly the correlation handle the perturbation exists to destroy —
+// and a prover-chosen seed could be ground for a flattering variant.
+//
+// PASS-1 LIMIT: this perturbation is applied verifier-side at render time, and
+// Bob ships likeness_data in the clear, so it buys no privacy here. Per D7 the
+// real thing computes L' = f(L, N) in-circuit. This is the shape of f, not a
+// security boundary.
+const VARIANTS = 3;
+function showVariants(L, N) {
+  const row = $('variantRow');
+  row.innerHTML = '';
+  const vs = VBBPerturb.variants(L.positions, N, VARIANTS, 0.05);
+  vs.forEach((v) => {
+    const c = document.createElement('canvas');
+    c.width = 240; c.height = 240;
+    // Pass L whole so the identity axes (iris/hairStyle/fringeStyle/beardStyle)
+    // render too; the perturbed positions come from v.positions, not L.
+    VouchToon.renderCartoon(c.getContext('2d'), v.positions, 240, 240, L);
+    row.appendChild(c);
+  });
+  $('variantNote').textContent =
+    `${VARIANTS} renderings of the same credential, perturbed along drift axes only ` +
+    `(face width, jaw taper, forehead height — the things a haircut or a few kilos change). ` +
+    `Seeded from the combined nonce, so this set is unique to this check.`;
+  $('likenessOutcome').style.display = 'none';
+  $('secLikeness').style.display = '';
+}
+
+$('btnAdmit').addEventListener('click', () => {
+  st($('likenessOutcome'), '✓ ADMITTED — proof valid and gatekeeper accepted the likeness', 'ok');
+  $('likenessOutcome').style.display = 'block';
+});
+$('btnReject').addEventListener('click', () => {
+  st($('likenessOutcome'), '✗ REFUSED — proof was valid but the gatekeeper rejected the likeness', 'err');
+  $('likenessOutcome').style.display = 'block';
+});
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
+</script>
+</body>
+</html>
