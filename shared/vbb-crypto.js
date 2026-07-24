@@ -50,6 +50,13 @@ async function loadLibs() {
     const snarkjs = require('snarkjs');
     return { circomlibjs, snarkjs };
   }
+  // circomlibjs bundles its own copy of the node buffer module but several of its
+  // dependencies (blake-hash, ripemd) still reach for a bare global Buffer while
+  // their module bodies evaluate, which browsers do not provide. Install the
+  // polyfill before the import so the global exists by the time it runs.
+  if (typeof globalThis.Buffer === 'undefined') {
+    globalThis.Buffer = (await import('./vendor/buffer.esm.js')).Buffer;
+  }
   const circomlibjs = await import('./vendor/circomlibjs.esm.js');
   const snarkjs = typeof window !== 'undefined' ? window.snarkjs : undefined;
   return { circomlibjs, snarkjs };
