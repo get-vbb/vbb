@@ -55,7 +55,10 @@ async function loadLibs() {
   // their module bodies evaluate, which browsers do not provide. Install the
   // polyfill before the import so the global exists by the time it runs.
   if (typeof globalThis.Buffer === 'undefined') {
-    globalThis.Buffer = (await import('./vendor/buffer.esm.js')).Buffer;
+    // The CDN +esm build exposes a named `Buffer`; the locally-vendored esbuild
+    // bundle of the CommonJS package puts it at `default.Buffer`. Accept either.
+    const m = await import('./vendor/buffer.esm.js');
+    globalThis.Buffer = m.Buffer || (m.default && m.default.Buffer);
   }
   const circomlibjs = await import('./vendor/circomlibjs.esm.js');
   const snarkjs = typeof window !== 'undefined' ? window.snarkjs : undefined;
