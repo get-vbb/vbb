@@ -50,15 +50,30 @@ async function loadLibs() {
     const snarkjs = require('snarkjs');
     return { circomlibjs, snarkjs };
   }
-  // circomlibjs bundles its own copy of the node buffer module but several of its
-  // dependencies (blake-hash, ripemd) still reach for a bare global Buffer while
-  // their module bodies evaluate, which browsers do not provide. Install the
-  // polyfill before the import so the global exists by the time it runs.
+  // The circomlibjs +esm bundle assumes a Node environment: its dependencies
+  // reach for the globals Buffer, process and setImmediate as their module
+  // bodies evaluate. Browsers provide none of them, so install shims before the
+  // import — otherwise circomlibjs throws at load and createVbbCrypto() rejects.
   if (typeof globalThis.Buffer === 'undefined') {
     // The CDN +esm build exposes a named `Buffer`; the locally-vendored esbuild
     // bundle of the CommonJS package puts it at `default.Buffer`. Accept either.
     const m = await import('./vendor/buffer.esm.js');
     globalThis.Buffer = m.Buffer || (m.default && m.default.Buffer);
+  }
+  if (typeof globalThis.process === 'undefined') {
+    const noop = () => {};
+    globalThis.process = {
+      env: {}, argv: [], version: '', versions: {},
+      platform: 'browser', browser: true, pid: 1,
+      nextTick: (cb, ...a) => queueMicrotask(() => cb(...a)),
+      stdout: { write: noop }, stderr: { write: noop },
+      emitWarning: noop, on: noop, once: noop, off: noop, cwd: () => '/',
+      noDeprecation: false, throwDeprecation: false, traceDeprecation: false,
+    };
+  }
+  if (typeof globalThis.setImmediate === 'undefined') {
+    globalThis.setImmediate = (cb, ...a) => setTimeout(cb, 0, ...a);
+    globalThis.clearImmediate = id => clearTimeout(id);
   }
   const circomlibjs = await import('./vendor/circomlibjs.esm.js');
   const snarkjs = typeof window !== 'undefined' ? window.snarkjs : undefined;
